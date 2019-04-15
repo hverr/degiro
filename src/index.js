@@ -10,6 +10,20 @@ const {lcFirst} = require('./utils');
 
 const BASE_TRADER_URL = 'https://trader.degiro.nl';
 
+class DegiroHTTPError extends Error {
+    constructor(message, status, response) {
+        super();
+
+        Error.captureStackTrace(this, this.constructor);
+
+        this.name = this.constructor.name;
+
+        this.message = message;
+        this.status = status;
+        this.response = response;
+    }
+}
+
 const create = ({
     username = process.env.DEGIRO_USER,
     password = process.env.DEGIRO_PASS,
@@ -36,6 +50,14 @@ const create = ({
         vwdQuotecastServiceUrl: null,
     };
 
+    const checkHttp = res => {
+        if (res.ok) {
+            return res;
+        } else {
+            throw new DegiroHTTPError(res.statusText, res.status, res);
+        }
+    };
+
     const checkSuccess = res => {
         if (res.status !== 0) {
             throw Error(res.message);
@@ -53,7 +75,7 @@ const create = ({
         log('getData', params);
         return fetch(
             `${urls.tradingUrl}v5/update/${session.account};jsessionid=${session.id}?${params}`
-        ).then(res => res.json());
+        ).then(checkHttp).then(res => res.json());
     };
 
     /**
@@ -92,7 +114,7 @@ const create = ({
                 headers: {Origin: 'https://trader.degiro.nl'},
                 body: JSON.stringify({referrer: 'https://trader.degiro.nl'}),
             }
-        ).then(res => res.json());
+        ).then(checkHttp).then(res => res.json());
     };
 
     /**
@@ -156,7 +178,9 @@ const create = ({
                     controlData: `req(${issueId}.BidPrice);req(${issueId}.AskPrice);req(${issueId}.LastPrice);req(${issueId}.LastTime);`,
                 }),
             })
+                .then(checkHttp)
                 .then(() => fetch(`https://degiro.quotecast.vwdservices.com/CORS/${vwdSession.sessionId}`))
+                .then(checkHttp)
                 .then(res => res.json())
                 .then(checkData);
         });
@@ -248,6 +272,7 @@ const create = ({
      */
     const getClientInfo = () =>
         fetch(`${urls.paUrl}client?sessionId=${session.id}`)
+            .then(checkHttp)
             .then(res => res.json())
             .then(clientInfo => {
                 const data = clientInfo.data;
@@ -266,6 +291,7 @@ const create = ({
         fetch(`${BASE_TRADER_URL}/login/secure/config`, {
             headers: {Cookie: `JSESSIONID=${session.id};`},
         })
+            .then(checkHttp)
             .then(res => res.json())
             .then(res => {
                 urls.paUrl = res.paUrl;
@@ -307,6 +333,7 @@ const create = ({
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(params),
         })
+            .then(checkHttp)
             .then(res => {
                 const cookies = parseCookies(res.headers.get('set-cookie') || '');
                 log({cookies});
@@ -354,7 +381,7 @@ const create = ({
             `${urls.productSearchUrl}v5/products/lookup?intAccount=${session.account}&sessionId=${
                 session.id
             }&${params}`
-        ).then(res => res.json());
+        ).then(checkHttp).then(res => res.json());
     };
 
     /**
@@ -373,6 +400,7 @@ const create = ({
                 headers: {'Content-Type': 'application/json;charset=UTF-8'},
             }
         )
+            .then(checkHttp)
             .then(res => res.json())
             .then(function(res) {
                 if (res.status == 0 && res.statusText == 'success') {
@@ -417,6 +445,7 @@ const create = ({
                 body: JSON.stringify(order),
             }
         )
+            .then(checkHttp)
             .then(res => res.json())
             .then(checkSuccess)
             .then(json => ({order, confirmationId: json.confirmationId}));
@@ -441,6 +470,7 @@ const create = ({
                 body: JSON.stringify(order),
             }
         )
+            .then(checkHttp)
             .then(res => res.json())
             .then(checkSuccess)
             .then(json => ({orderId: json.orderId}));
@@ -476,7 +506,7 @@ const create = ({
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(ids.map(id => id.toString())),
             }
-        ).then(res => res.json());
+        ).then(checkHttp).then(res => res.json());
     };
 
     return {
@@ -500,6 +530,7 @@ const create = ({
 
 module.exports = {
     create,
+    DegiroHTTPError,
     Actions,
     OrderTypes,
     ProductTypes,
